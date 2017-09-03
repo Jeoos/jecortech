@@ -1,0 +1,2 @@
+# jecortextech
+Blogs
