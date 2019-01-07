@@ -94,11 +94,12 @@ static const struct block_device_operations simp_blkdev_fops = {
         .ioctl          = simp_ioctl, 
 };
 
-static void io_end_bio(struct bio *bio, int err)
+//static void io_end_bio(struct bio *bio, int err)
+static void io_end_bio(struct bio *bio)
 {
 	//struct dummy_device *ddev = bio->bi_private;
         printk(KERN_INFO "in end bio\n");
-
+/*
 	if (unlikely(!bio_flagged(bio,BIO_UPTODATE))) {
 		if (err == 0) {
 			printk(KERN_ERR "%s-%d: Not uptodata bio try again !%ld \n",
@@ -106,6 +107,12 @@ static void io_end_bio(struct bio *bio, int err)
 			return ;
 		}
 	}
+*/
+        if (bio->bi_error) {
+		printk(KERN_ERR "%s-%d: Not uptodata bio try again !%ld \n",
+		        __func__, __LINE__, bio->bi_iter.bi_sector);
+                return ;
+        }
 	//__free_pages(page, 0);
 	bio_put(bio);
 }
@@ -120,7 +127,7 @@ int submit_readwrite(int rw,struct dummy_device *ddev, struct page *page, sector
 	}
 	/* init bio */
 	bio->bi_bdev = ddev->bdev;
-        printk("bio->bi_sector = %lu\n", sector);
+        printk("bio->bi_iter.bi_sector = %lu\n", sector);
 	bio->bi_private = ddev;
 
 	bio->bi_rw |= REQ_FAILFAST_DEV |
@@ -287,30 +294,49 @@ err_get:
         return ret;
 }
 
-static void simp_make_request(struct request_queue *q, struct bio *bi)
+//static void simp_make_request(struct request_queue *q, struct bio *bi)
+static blk_qc_t simp_make_request(struct request_queue *q, struct bio *bi)
 {
-        int rw, i, err;
-        struct bio_vec *bvec;
-        sector_t sector = bi->bi_sector;
+        //int i;
+        int rw, err;
+        //struct bio_vec *bvec;
+        struct bio_vec bvec;
+        struct bvec_iter iter;
+        sector_t sector = bi->bi_iter.bi_sector;
         //static int incnt = 0;
         rw = bio_rw(bi);
 
         //printk("incnt = %u \n", incnt++);
-        bio_for_each_segment(bvec, bi, i) {
+        //bio_for_each_segment(bvec, bi, i) {
+        bio_for_each_segment(bvec, bi, iter) {
+                /*
                 if(rw == WRITE){
                         err = blk_dev_write(blk_dev, bvec->bv_page, bvec->bv_len,
                                 bvec->bv_offset, sector,
-                                bi->bi_sector, bi->bi_size);
+                                bi->bi_iter.bi_sector, bi->bi_size);
                 }else{
                         err = blk_dev_read(blk_dev, bvec->bv_page, bvec->bv_len,
                                 bvec->bv_offset, sector);
                 }
                 if (err) break;
                 sector += bvec->bv_len >> SECTOR_SHIFT;
+                */
+                if(rw == WRITE){
+                        err = blk_dev_write(blk_dev, bvec.bv_page, bvec.bv_len,
+                                bvec.bv_offset, sector,
+                                bi->bi_iter.bi_sector, bi->bi_iter.bi_size);
+                }else{
+                        err = blk_dev_read(blk_dev, bvec.bv_page, bvec.bv_len,
+                                bvec.bv_offset, sector);
+                }
+                if (err) break;
+                sector += bvec.bv_len >> SECTOR_SHIFT;
         }
-        bio_endio(bi, 0);
+        //bio_endio(bi, 0);
+        bio_endio(bi);
 
-        return ;
+        //return ;
+        return BLK_QC_T_NONE;
 }
 
 static int __init radix_block_init(void)
